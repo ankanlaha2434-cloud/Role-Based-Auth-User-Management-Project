@@ -1,0 +1,11 @@
+const router=require('express').Router(),{requireAuth,allowRoles}=require('../middlewares/auth'),User=require('../models/User'),LoginHistory=require('../models/LoginHistory'),bcrypt=require('bcryptjs');
+router.use(requireAuth,allowRoles('admin'));
+router.get('/dashboard',async(req,res)=>{const [total,admins,managers,normal,active,inactive,today]=await Promise.all([User.countDocuments(),User.countDocuments({role:'admin'}),User.countDocuments({role:'manager'}),User.countDocuments({role:'user'}),User.countDocuments({isActive:true}),User.countDocuments({isActive:false}),LoginHistory.countDocuments({loginAt:{$gte:new Date(new Date().setHours(0,0,0,0))}})]);res.render('dashboards/admin',{stats:{total,admins,managers,normal,active,inactive,today}});});
+router.get('/users',async(req,res)=>{const users=await User.find().sort({createdAt:-1});res.render('admin/users',{users});});
+router.get('/users/new',(req,res)=>res.render('admin/form',{user:null,errors:[]}));
+router.post('/users',async(req,res)=>{try{const {name,email,mobile,password,role}=req.body;await User.create({name,email:email.toLowerCase(),mobile,password:await bcrypt.hash(password,12),role:['admin','manager','user'].includes(role)?role:'user'});res.redirect('/admin/users');}catch(e){res.render('admin/form',{user:null,errors:[{msg:'Could not create user. Email may already exist.'}]});}});
+router.get('/users/:id/edit',async(req,res)=>res.render('admin/form',{user:await User.findById(req.params.id),errors:[]}));
+router.put('/users/:id',async(req,res)=>{const {name,email,mobile,role,isActive}=req.body;await User.findByIdAndUpdate(req.params.id,{name,email:email.toLowerCase(),mobile,role,isActive:isActive==='on'});res.redirect('/admin/users');});
+router.delete('/users/:id',async(req,res)=>{if(req.params.id===String(req.session.user.id)){req.session.message='You cannot delete your own admin account.';return res.redirect('/admin/users');}await User.findByIdAndDelete(req.params.id);res.redirect('/admin/users');});
+router.get('/history',async(req,res)=>{const history=await LoginHistory.find().populate('userId','name email').sort({loginAt:-1}).limit(200);res.render('profile/history',{history,all:true});});
+module.exports=router;
